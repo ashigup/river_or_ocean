@@ -1,12 +1,24 @@
 import pathlib
 import platform
+import sys
+import types
 import traceback
 from pathlib import Path
 import streamlit as st
 import torch
 from fastai.vision.all import PILImage
 
-# Ensure Path compatibility across OS environments
+# Compatibility shim: Kaggle uses Python 3.13 (pathlib._local), Streamlit uses Python 3.11
+if "pathlib._local" not in sys.modules:
+    pathlib_local = types.ModuleType("pathlib._local")
+    pathlib_local.Path = pathlib.Path
+    pathlib_local.PosixPath = pathlib.PosixPath
+    pathlib_local.WindowsPath = pathlib.PosixPath if platform.system() != "Windows" else pathlib.WindowsPath
+    pathlib_local.PurePath = pathlib.PurePath
+    pathlib_local.PurePosixPath = pathlib.PurePosixPath
+    pathlib_local.PureWindowsPath = pathlib.PureWindowsPath
+    sys.modules["pathlib._local"] = pathlib_local
+
 if platform.system() != "Windows":
     pathlib.WindowsPath = pathlib.PosixPath
 
@@ -23,7 +35,6 @@ def load_model():
             f"Model file not found at {MODEL_PATH}. Available files: {repo_files}"
         )
 
-    # Check if model.pkl was accidentally committed as a tiny Git LFS text pointer
     if MODEL_PATH.stat().st_size < 1024:
         raise ValueError(
             f"model.pkl is only {MODEL_PATH.stat().st_size} bytes (likely a Git LFS pointer instead of the actual model weights)."
@@ -38,7 +49,6 @@ def load_model():
 
 st.title("River or Ocean Image Classifier 🌊🏞️")
 
-# Load model with error catching
 try:
     model = load_model()
 except Exception as e:
