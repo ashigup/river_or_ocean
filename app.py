@@ -4,9 +4,11 @@ import sys
 import types
 import traceback
 from pathlib import Path
+from PIL import Image
 import streamlit as st
 import torch
-from fastai.vision.all import PILImage
+import torch.nn.functional as F
+from torchvision import transforms
 
 # Compatibility shim: Kaggle uses Python 3.13 (pathlib._local), Streamlit uses Python 3.11
 if "pathlib._local" not in sys.modules:
@@ -26,6 +28,13 @@ st.set_page_config(page_title="River or Ocean Classifier", page_icon="🌊")
 
 MODEL_PATH = Path(__file__).parent / "model.pkl"
 
+# Match the exact preprocessing from Kaggle: Resize(192, method='squish') + ImageNet stats
+preprocess = transforms.Compose([
+    transforms.Resize((192, 192)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
 
 @st.cache_resource
 def load_model():
@@ -41,16 +50,16 @@ def load_model():
         )
 
     learn = torch.load(MODEL_PATH, map_location=torch.device("cpu"), weights_only=False)
-    learn.dls.cpu()
-    learn.model.cpu()
-    learn.model.eval()
-    return learn
+    vocab = list(learn.dls.vocab)
+    net = learn.model.cpu()
+    net.eval()
+    return net, vocab
 
 
 st.title("River or Ocean Image Classifier 🌊🏞️")
 
 try:
-    model = load_model()
+    net, vocab = load_model()
 except Exception as e:
     print("=== MODEL LOADING ERROR ===", flush=True)
     traceback.print_exc()
@@ -64,18 +73,25 @@ uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png
 
 if uploaded_file is not None:
     try:
-        img = PILImage.create(uploaded_file)
+        # Convert to RGB so PNGs with transparency (4 channels) don't fail
+        img = Image.open(uploaded_file).convert("RGB")
         st.image(img, caption="Uploaded Image", use_container_width=True)
 
         with st.spinner("Analyzing image..."):
-            pred_class, pred_idx, probs = model.predict(img)
+            input_tensor = preprocess(img).unsqueeze(0)
+            with torch.no_grad():
+                logits = net(input_tensor)
+                probs = F.softmax(logits, dim=1)[0]
+
+            pred_idx = int(torch.argmax(probs).item())
+            pred_class = vocab[pred_idx]
 
         st.success(f"**Prediction:** {pred_class.capitalize()}")
         st.write(f"**Confidence:** {probs[pred_idx]:.2%}")
 
         st.subheader("Class Probabilities")
-        for label, prob in zip(model.dls.vocab, probs):
-            st.write(f"- **{label}**: {prob:.2%}")
+        for label, prob in zip(vocab, probs):
+            st.write(f"- **{label}**: {prob.item():.2%}")
 
     except Exception as e:
         print("=== PREDICTION ERROR ===", flush=True)
