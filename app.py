@@ -9,10 +9,15 @@ if platform.system() != 'Windows':
 
 st.set_page_config(page_title="River or Ocean Classifier", page_icon="🌊")
 
+import torch
+
 @st.cache_resource
 def load_model():
-    # Load the model explicitly onto CPU
-    return load_learner('model.pkl', cpu=False)
+    learn = torch.load('model.pkl', map_location=torch.device('cpu'), weights_only=False)
+    learn.dls.cpu()
+    learn.model.cpu()
+    learn.model.eval()
+    return learn
 
 model = load_model()
 
