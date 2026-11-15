@@ -12,7 +12,7 @@ st.set_page_config(page_title="River or Ocean Classifier", page_icon="🌊")
 @st.cache_resource
 def load_model():
     # Load the model explicitly onto CPU
-    return load_learner('model.pkl', cpu=True)
+    return load_learner('model.pkl', cpu=False)
 
 model = load_model()
 
